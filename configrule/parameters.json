@@ -1,0 +1,12 @@
+{
+  "Version": "1.0",
+  "Parameters": {
+    "RuleName": "CLOUDKNOX_PRIVILEGE_CREEP_INDEX",
+    "SourceRuntime": "python3.7",
+    "CodeKey": "CLOUDKNOX_PRIVILEGE_CREEP_INDEX.zip",
+    "InputParameters": "{}",
+    "OptionalParameters": "{}",
+    "SourcePeriodic": "TwentyFour_Hours"
+  },
+  "Tags": "[]"
+}
