@@ -1,0 +1,91 @@
+
+Description: AWS Systems Manager Automation Document for CloudKnox Remediation
+AWSTemplateFormatVersion: "2010-09-09"
+
+
+###########
+# In Progress - TBD
+###########
+
+Outputs:
+  AutomationAssumeRoleArn:
+    Description: Arn for AutomationAssumeRole
+    Value: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}'
+    Export: # added to export
+      Name: CloudKnox-AutomationAssumeRoleArn
+
+Resources:
+
+# SSM Automation Role
+  AutomationAssumeRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub cloudknox-automationassumerole-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ssm.amazonaws.com
+                - events.amazonaws.com
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess"
+
+
+# [CloudKnox-IAMUserRightsizing]
+  CloudKnox-IAMUserRightsizing:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Automation
+      Name: CloudKnox-IAMUserRightsizing
+      Content:
+        schemaVersion: '0.3'
+        assumeRole: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
+        parameters:
+          username:
+            type: String
+            default: 'fsbpadmin'
+          AutomationAssumeRole:
+            type: String
+            default: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
+        mainSteps:
+          - name: rightsizeiamuser
+            action: 'aws:executeScript'
+            inputs:
+              Runtime: python3.7
+              Handler: rightsizeiamuser_handler
+              Script: |
+                def rightsizeiamuser_handler(events, context):
+                  import boto3
+                  import datetime
+                  import json
+                  import os
+                  iam = boto3.client('iam')
+                  securityhub = boto3.client('securityhub')
+                  iam_resource = boto3.resource('iam')
+                  try:
+                     username = events['username']
+                     todaysDatetime = datetime.datetime.now(datetime.timezone.utc)
+                     paginator = iam.get_paginator('list_access_keys')
+                     for response in paginator.paginate(UserName=username):
+                         for keyMetadata in response['AccessKeyMetadata']:
+                             accessKeyId = str(keyMetadata['AccessKeyId'])
+                             keyAgeFinder = todaysDatetime - keyMetadata['CreateDate']
+                             if keyAgeFinder <= datetime.timedelta(days=90):
+                                 print("Access key: " + accessKeyId + " is compliant")
+                             else:
+                               print("Access key over 90 days old found!")
+                               access_key = iam_resource.AccessKey(username, accessKeyId)
+                               access_key.deactivate()
+                  except Exception as e:
+                     print(e)
+                     raise
+              InputPayload:
+                AutomationAssumeRole: '{{AutomationAssumeRole}}'
+                username: '{{username}}'
+
