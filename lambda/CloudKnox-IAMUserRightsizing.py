@@ -28,7 +28,7 @@ def get_secret_value(key='CloudKnoxSecretString'):
           return(output)
 
 
-##  Identity Usage CloudKnox API - Retrieve PCI score:
+##  Role Policy CloudKnox API - Retrieve IAM Policy:
 def getCloudKnoxRemediationPolicy(apiId, accessToken, serviceId, timestamp, url, accountId, userarn, port):
     conn = http.client.HTTPSConnection(url, port)
     content_type = "application/json"
@@ -156,7 +156,4 @@ def lambda_handler(event, context):
     print('accessToken is: ' + accessToken)
     iampolicy = getCloudKnoxRemediationPolicy(apiId, accessToken, serviceId, timestamp, url, accountId, userarn, 443)
     
-    return {
-        'statusCode': 200,
-        'body': json.dumps('Hello from Lambda!')
-    }
+    return 
