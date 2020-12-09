@@ -55,46 +55,8 @@ CONFIG_ROLE_TIMEOUT_SECONDS = 900
 
 
 ## Helper Functions
-## - not used 
-def get_secret(secret_name, region_name):
-    session = boto3.session.Session()
-    client = session.client(
-        service_name='secretsmanager',
-        region_name=region_name)
-    try:
-        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'DecryptionFailureException':
-            # Secrets Manager can't decrypt the protected secret text using the provided KMS key.
-            # Deal with the exception here, and/or rethrow at your discretion.
-            raise e
-        elif e.response['Error']['Code'] == 'InternalServiceErrorException':
-            # An error occurred on the server side.
-            # Deal with the exception here, and/or rethrow at your discretion.
-            raise e
-        elif e.response['Error']['Code'] == 'InvalidParameterException':
-            # You provided an invalid value for a parameter.
-            # Deal with the exception here, and/or rethrow at your discretion.
-            raise e
-        elif e.response['Error']['Code'] == 'InvalidRequestException':
-            # You provided a parameter value that is not valid for the current state of the resource.
-            # Deal with the exception here, and/or rethrow at your discretion.
-            raise e
-        elif e.response['Error']['Code'] == 'ResourceNotFoundException':
-            # We can't find the resource that you asked for.
-            # Deal with the exception here, and/or rethrow at your discretion.
-            raise e
-    else:
-        # Decrypts secret using the associated KMS CMK.
-        # Depending on whether the secret is a string or binary, one of these fields will be populated.
-        if 'SecretString' in get_secret_value_response:
-            secret = get_secret_value_response['SecretString']
-            return secret
 
-        else:
-            decoded_binary_secret = base64.b64decode(get_secret_value_response['SecretBinary'])
-
-## retrieve secretstring
+## AWS Secrets Manager - retrieve secretstring
 def get_secret_value(key='CloudKnoxSecretString'):
           secretsmanager = boto3.client('secretsmanager')
           secret_list = secretsmanager.list_secrets()['SecretList']
@@ -105,21 +67,7 @@ def get_secret_value(key='CloudKnoxSecretString'):
           return(output)
 
 
-## Build search payload:
-def payloadBuilder(accountId):
-
-    cloudknoxDict = {}
-    cloudknoxDict['authSystemInfo'] = [{'id': accountId,
-                                        'type': 'AWS'}]
-    cloudknoxDict['identityType'] = 'USER'
-    cloudknoxDict['aggregation'] = [{'type': 'SUMMARY'}]
-    cloudknoxDict['pageInfo'] = [{'pageId': 0,
-                                  'pageSize': 50}]
-
-    cloudknoxJson = json.dumps(cloudknoxDict)
-    return cloudknoxJson
-
-## Build search string:
+##  Identity Usage CloudKnox API - Retrieve PCI score:
 def retrievePCI(apiId, accessToken, serviceId, timestamp, url, accountId, port):
     conn = http.client.HTTPSConnection(url, port)
     content_type = "application/json"
@@ -156,6 +104,39 @@ def retrievePCI(apiId, accessToken, serviceId, timestamp, url, accountId, port):
     dataResponse = json.loads(data.decode("utf-8"))
     print('dataResponse_name: ' + dataResponse['data'][1]['name'])
     return dataResponse['data']
+
+## Authenticate CloudKnox API - Retrive accessToken:
+def getAccessToken(serviceId,timestamp,accessKey,secretKey,url,port):
+    conn = http.client.HTTPSConnection(url, port)
+    content_type = "application/json"
+    print('serviceId-accessToken: '+ serviceId )
+    print('timestamp-accessToken: '+ timestamp )
+    print('accessKey-accessToken: '+ accessKey )
+    print('secretKey-accessToken: '+ secretKey )
+    print('url-accessToken: ' + url)
+
+    headers = {
+      'X-CloudKnox-Service-Account-Id': serviceId,
+      'X-CloudKnox-Timestamp-Millis': timestamp,
+      'Content-Type': content_type
+    }
+
+    cloudknoxDict = {}
+    cloudknoxDict['serviceAccountId'] = serviceId
+    cloudknoxDict['accessKey'] = accessKey
+    cloudknoxDict['secretKey'] = secretKey
+
+    payload = json.dumps(cloudknoxDict)
+    print('payload-accessToken: ' + payload)
+    
+    conn.request("POST", "/api/v2/service-account/authenticate", payload, headers)
+    res = conn.getresponse()
+    data = res.read()
+    data_raw = data.decode()
+    print('data_raw: ' + data_raw)
+    dataResponse = json.loads(data.decode("utf-8"))
+    print('accessToken: ' + dataResponse['accessToken'])
+    return dataResponse['accessToken']
 
 def fetch_all_items(client, method, response_key, **kwargs):
     """
@@ -197,20 +178,20 @@ def evaluate_compliance(event, configuration_item, valid_rule_parameters):
     3 -- if None or an empty string, list or dict is returned, the Boilerplate code will put a "shadow" evaluation to feedback that the evaluation took place properly
     """
 
-    ## Get a list of all IAM users detected by Config with high PCI score
+    ## Initialize AWS Config
     configClient = boto3.client('config')
     
     userList_ID= []
     userList_Name=[]
 
-    # fetch_all_users:
+    # fetch_all_users: Get a list of all IAM users from AWS Config
     allDiscoveredUsers = fetch_all_items(configClient,
                     configClient.list_discovered_resources,
                     'resourceIdentifiers',
                     resourceType='AWS::IAM::User',
                     limit=100)
 
-    ## Get the AWS Config Resource Ids for each user and put them in a list
+    ## Get the AWS Config Resource Ids for each IAM user and put them in a list
     for resourceIdentifiers in allDiscoveredUsers:
         print('userIDinlist: ' + resourceIdentifiers['resourceId'])
         print('userNameinlist: ' + resourceIdentifiers['resourceName'])
@@ -221,13 +202,16 @@ def evaluate_compliance(event, configuration_item, valid_rule_parameters):
     secretList = json.loads(get_secret_value('CloudKnoxSecretString'))
     serviceId=""
     apiId=""
+    accessKey=""
+    secretKey=""
     accessToken=""
     accountId=""
     url=""
     
     serviceId_key='serviceId'
     apiId_key='apiId'
-    accessToken_key='accessToken'
+    accessKey_key='accessKey'
+    secretKey_key='secretKey'
     accountId_key= 'accountId'
     url_key='url'
       
@@ -235,8 +219,10 @@ def evaluate_compliance(event, configuration_item, valid_rule_parameters):
         serviceId = secretList[serviceId_key]
     if apiId_key in secretList:
         apiId = secretList[apiId_key]
-    if accessToken_key in secretList:
-        accessToken = secretList[accessToken_key]
+    if accessKey_key in secretList:
+        accessKey = secretList[accessKey_key]
+    if secretKey_key in secretList:
+        secretKey = secretList[secretKey_key]
     if accountId_key in secretList:
         accountId = secretList[accountId_key]
     if url_key in secretList:
@@ -247,12 +233,14 @@ def evaluate_compliance(event, configuration_item, valid_rule_parameters):
 
     ## Define annotations for evaluation
     complianceString = "User has a CloudKnox PCI score of: "
-
     ## Create empty list of evaluations to populate and return
     evaluations = []
 
-    # payload = payloadBuilder(accountId)
+ 
+    accessToken = getAccessToken(serviceId,timestamp,accessKey,secretKey,url,443)
+    print('accessToken is: ' + accessToken)
     userResults = retrievePCI(apiId, accessToken, serviceId, timestamp, url, accountId, 443)
+
     resourceindex = 0
     for user in userResults:
         username = user['name']
