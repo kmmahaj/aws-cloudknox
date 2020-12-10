@@ -66,8 +66,8 @@ Resources:
     Properties:
       FunctionName: !Join 
         - ''
-        - - CloudKnox-
-          - IAMUserRightsizing
+        - - CloudKnox_
+          - IAMRightsize
       Role: !GetAtt CloudKnoxIAMUserRightsizeLambdaRole.Arn
       Code:
         S3Bucket: !Ref SourceBucket
@@ -152,12 +152,12 @@ Resources:
 
 
 # [CloudKnox-IAMUserRightsizing SSM]
-  CloudKnox-IAMUserRightsizing:
+  CloudKnoxIAMUserRightsizing:
     Type: AWS::SSM::Document
     DependsOn: SSMPermissionToCallRightsizeLambda
     Properties:
       DocumentType: Automation
-      Name: CloudKnox-IAMUserRightsizing
+      Name: Custom-CloudKnoxIAMUserRightsizing
       Content:
         schemaVersion: '0.3'
         assumeRole: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
@@ -174,7 +174,7 @@ Resources:
             maxAttempts: 3
             timeoutSeconds: 180
             inputs:
-              FunctionName: !GetAtt CloudKnoxIAMUserRightsizeLambdaRole.Arn
+              FunctionName: !GetAtt CloudKnoxIAMUserRightsizeLambda.Arn
               InvocationType: RequestResponse
         
 
