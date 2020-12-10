@@ -1,11 +1,19 @@
 
-Description: AWS Systems Manager Automation Document for CloudKnox Remediation
+Description: AWS Systems Manager Automation, AWS Lambda and AWS Config Remediation for CloudKnox IAM User Rightsizing
 AWSTemplateFormatVersion: "2010-09-09"
 
+# Provisions Custom Remediation for IAM Rightsizing with CloudKnox and AWS Config
+#  - Creates the IAM Rightsizing Lambda that uses CloudKnox Policy API
+#  - Provisions a Systems Manager Automation Document that invokes the lambda 
+#  - Provisions an AWS Config Remediation that uses the Systems Manager Automation Document
+#  - Attaches the AWS Config Remediation to the AWS Config Rule (set up earlier by the RDK)
 
-###########
-# In Progress - TBD
-###########
+
+# @kmmahaj
+#
+## License:
+## This code is made available under the MIT-0 license. See the LICENSE file.
+
 
 Outputs:
   AutomationAssumeRoleArn:
@@ -13,6 +21,22 @@ Outputs:
     Value: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}'
     Export: # added to export
       Name: CloudKnox-AutomationAssumeRoleArn
+
+Parameters:
+  SourceBucket:
+    Description: S3 Bucket that contains the CloudKnox_IAMRightsize Lambda 
+    Type: String
+    Default: 's3-cloudknoxiamuserrightsize'
+    MinLength: '1'
+    MaxLength: '255'
+
+  testuserarn:
+    Description: Test user to test the SSM Automation. Will be removed. User directly provided by AWS Config
+    Type: String
+    Default: 'arn:aws:iam::341476298946:user/iamuser2'
+    MinLength: '1'
+    MaxLength: '255'
+
 
 Resources:
 
@@ -36,10 +60,101 @@ Resources:
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess"
 
+#CloudKnox IAM Rightsize Lambda
+  CloudKnoxIAMUserRightsizeLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Join 
+        - ''
+        - - CloudKnox-
+          - IAMUserRightsizing
+      Role: !GetAtt CloudKnoxIAMUserRightsizeLambdaRole.Arn
+      Code:
+        S3Bucket: !Ref SourceBucket
+        S3Key: !Join 
+          - ''
+          - - CloudKnox_IAMRightsize
+            - /
+            - CloudKnox_IAMRightsize
+            - .zip
+      Description: CloudKnox IAM User Rightsizing Lambda
+      Handler: CloudKnox_IAMRightsize.lambda_handler
+      MemorySize: '256'
+      Runtime: python3.7
+      Timeout: 300
 
-# [CloudKnox-IAMUserRightsizing]
+#CloudKnox IAM Rightsize Lambda Role
+  CloudKnoxIAMUserRightsizeLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub cloudknox-iamuserrightsizelambdarole-${AWS::Region}
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: AllowLambdaAssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: IAMRemediationPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Sid: '1'
+                Action:
+                  - 's3:*'
+                Effect: Allow
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${SourceBucket}
+                  - !Sub arn:${AWS::Partition}:s3:::${SourceBucket}/*
+              - Sid: '2'
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogStreams'
+                Effect: Allow
+                Resource: '*'
+              - Sid: '3'
+                Action:
+                  - 'secretsmanager:*'
+                Effect: Allow
+                Resource: '*'
+              - Sid: '4'
+                Action:
+                  - 'iam:List*'
+                  - 'iam:Describe*'
+                  - 'iam:Get*'
+                  - 'iam:Put*'
+                  - 'iam:*'
+                Effect: Allow
+                Resource: '*'
+              - Sid: '5'
+                Action:
+                  - 'sts:AssumeRole'
+                Effect: Allow
+                Resource: '*'
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/ReadOnlyAccess'
+
+  SSMPermissionToCallRightsizeLambda:
+    Type: 'AWS::Lambda::Permission'
+    DependsOn:
+      - CloudKnoxIAMUserRightsizeLambda
+      - AutomationAssumeRole
+    Properties:
+      FunctionName: !GetAtt 
+        - CloudKnoxIAMUserRightsizeLambda
+        - Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
+
+
+# [CloudKnox-IAMUserRightsizing SSM]
   CloudKnox-IAMUserRightsizing:
     Type: AWS::SSM::Document
+    DependsOn: SSMPermissionToCallRightsizeLambda
     Properties:
       DocumentType: Automation
       Name: CloudKnox-IAMUserRightsizing
@@ -47,45 +162,20 @@ Resources:
         schemaVersion: '0.3'
         assumeRole: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
         parameters:
-          username:
+          userarn:
             type: String
-            default: 'fsbpadmin'
+            default: !Ref testuserarn
           AutomationAssumeRole:
             type: String
             default: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
         mainSteps:
           - name: rightsizeiamuser
-            action: 'aws:executeScript'
+            action: 'aws:invokeLambdaFunction'
+            maxAttempts: 3
+            timeoutSeconds: 180
             inputs:
-              Runtime: python3.7
-              Handler: rightsizeiamuser_handler
-              Script: |
-                def rightsizeiamuser_handler(events, context):
-                  import boto3
-                  import datetime
-                  import json
-                  import os
-                  iam = boto3.client('iam')
-                  securityhub = boto3.client('securityhub')
-                  iam_resource = boto3.resource('iam')
-                  try:
-                     username = events['username']
-                     todaysDatetime = datetime.datetime.now(datetime.timezone.utc)
-                     paginator = iam.get_paginator('list_access_keys')
-                     for response in paginator.paginate(UserName=username):
-                         for keyMetadata in response['AccessKeyMetadata']:
-                             accessKeyId = str(keyMetadata['AccessKeyId'])
-                             keyAgeFinder = todaysDatetime - keyMetadata['CreateDate']
-                             if keyAgeFinder <= datetime.timedelta(days=90):
-                                 print("Access key: " + accessKeyId + " is compliant")
-                             else:
-                               print("Access key over 90 days old found!")
-                               access_key = iam_resource.AccessKey(username, accessKeyId)
-                               access_key.deactivate()
-                  except Exception as e:
-                     print(e)
-                     raise
-              InputPayload:
-                AutomationAssumeRole: '{{AutomationAssumeRole}}'
-                username: '{{username}}'
+              FunctionName: !GetAtt CloudKnoxIAMUserRightsizeLambdaRole.Arn
+              InvocationType: RequestResponse
+        
+
 
