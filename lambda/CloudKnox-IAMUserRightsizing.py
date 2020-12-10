@@ -1,3 +1,13 @@
+
+#  Lambda for IAM Rightsizing with CloudKnox and AWS Config
+#  - IAM Rightsizing Lambda that uses CloudKnox Policy API
+
+# @kmmahaj
+#
+## License:
+## This code is made available under the MIT-0 license. See the LICENSE file.
+
+
 import json
 import sys
 import datetime

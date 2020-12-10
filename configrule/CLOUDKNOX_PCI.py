@@ -1,13 +1,16 @@
-# Copyright 2019-2021 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+# Provisions Custom Config Rule for CloudKnox PCI 
+# - Invokes CloudKnox REST APIs for authenticate and Identity Usage
+# - Retrieves CloudKnox Credentials from Secrets Manager
+# - Implements 'EvaluateCompliance' to return Non Compliant IAM Users (users with High CloudKnox 
+#   'Privilege Creep Index')
+
+
+# @kmmahaj
 #
-# Licensed under the Apache License, Version 2.0 (the "License"). You may
-# not use this file except in compliance with the License. A copy of the License is located at
-#
-#        http://aws.amazon.com/apache2.0/
-#
-# or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for
-# the specific language governing permissions and limitations under the License.
+## License:
+## This code is made available under the MIT-0 license. See the LICENSE file.
+
 
 
 import json
