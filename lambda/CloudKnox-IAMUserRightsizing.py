@@ -1,4 +1,3 @@
-
 import json
 import sys
 import datetime
@@ -28,7 +27,7 @@ def get_secret_value(key='CloudKnoxSecretString'):
           return(output)
 
 
-##  Role Policy CloudKnox API - Retrieve IAM Policy:
+##  Identity Usage CloudKnox API - Retrieve PCI score:
 def getCloudKnoxRemediationPolicy(apiId, accessToken, serviceId, timestamp, url, accountId, userarn, port):
     conn = http.client.HTTPSConnection(url, port)
     content_type = "application/json"
@@ -65,8 +64,8 @@ def getCloudKnoxRemediationPolicy(apiId, accessToken, serviceId, timestamp, url,
     cloudknoxDict['filter'] = {'historyDays': 90,
                                 'preserveReads': True,
                                  "historyDuration": {
-                                	"startTime": startTime,
-                                	"endTime": endTime
+                                    "startTime": startTime,
+                                    "endTime": endTime
                                 }
                              }
     payload = json.dumps(cloudknoxDict)
@@ -135,6 +134,9 @@ def lambda_handler(event, context):
     url_key='url'
     
     userarn = event['userarn']
+    userarn_1 = userarn.split(':')[-1] 
+    username = userarn_1.replace("user/","")
+    print('username: ' + username)
       
     if serviceId_key in secretList:
         serviceId = secretList[serviceId_key]
@@ -155,5 +157,27 @@ def lambda_handler(event, context):
     accessToken = getAccessToken(serviceId,timestamp,accessKey,secretKey,url,443)
     print('accessToken is: ' + accessToken)
     iampolicy = getCloudKnoxRemediationPolicy(apiId, accessToken, serviceId, timestamp, url, accountId, userarn, 443)
+    
+    iamClient = boto3.client('iam')
+    iampolicydict={}
+    count = 0
+    for policy in iampolicy:
+        count = count + 1
+        cloudknoxiampolicy = policy['policy']
+        iampolicydict['Version'] = cloudknoxiampolicy['Version']
+        iampolicydict['Statement'] = cloudknoxiampolicy['Statement'][:3]
+        
+        PolicyDocument = json.dumps(iampolicydict)
+        print('PolicyDocument: ' + PolicyDocument)
+        
+        PolicyName = 'CloudKnoxRemediationPolicy-' + str(count)
+        
+        response = iamClient.put_user_policy(
+                            PolicyDocument=PolicyDocument,
+                            PolicyName=PolicyName,
+                            UserName=username,
+        )
+    
+    
     
     return 
