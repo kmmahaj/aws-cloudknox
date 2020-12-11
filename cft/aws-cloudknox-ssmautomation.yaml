@@ -165,7 +165,6 @@ Resources:
         parameters:
           userarn:
             type: String
-            default: !Ref testuserarn
           AutomationAssumeRole:
             type: String
             default: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
