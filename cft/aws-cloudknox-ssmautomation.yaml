@@ -119,6 +119,7 @@ Resources:
               - Sid: '3'
                 Action:
                   - 'secretsmanager:*'
+                  - 'config:*'
                 Effect: Allow
                 Resource: '*'
               - Sid: '4'
@@ -176,6 +177,31 @@ Resources:
             inputs:
               FunctionName: !GetAtt CloudKnoxIAMUserRightsizeLambda.Arn
               InvocationType: RequestResponse
-        
+              Payload: '{"parameterName":"userarn", "parameterValue":"{{userarn}}"}'
 
 
+# [CloudKnox-AWS Config Remediation for high PCI]
+  CloudKnoxPCIConfigRemediation:
+    DependsOn: CloudKnoxIAMUserRightsizing
+    Type: 'AWS::Config::RemediationConfiguration'
+    Properties:
+      ConfigRuleName: CLOUDKNOX_PCI
+      ResourceType: "AWS::IAM::User"
+      TargetId: "Custom-CloudKnoxIAMUserRightsizing"
+      TargetType: "SSM_DOCUMENT"
+      TargetVersion: "1"
+      Parameters:
+        AutomationAssumeRole:
+          StaticValue:
+            Values:
+              - !ImportValue AutomationAssumeRoleArn
+        userarn:
+          ResourceValue:
+            Value: "RESOURCE_ID"
+      ExecutionControls:
+        SsmControls:
+          ConcurrentExecutionRatePercentage: 10
+          ErrorPercentage: 10
+      Automatic: True
+      MaximumAutomaticAttempts: 5
+      RetryAttemptSeconds: 60

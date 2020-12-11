@@ -143,10 +143,23 @@ def lambda_handler(event, context):
     accountId_key= 'accountId'
     url_key='url'
     
-    userarn = event['userarn']
-    userarn_1 = userarn.split(':')[-1] 
-    username = userarn_1.replace("user/","")
+    # userarn = event['userarn']
+    #userarn = event['parameterValue']
+    #userarn_1 = userarn.split(':')[-1] 
+    #username = userarn_1.replace("user/","")
+
+    config = boto3.client('config')
+    resourceid = event['parameterValue']
+    response = config.list_discovered_resources(
+        resourceType='AWS::IAM::User',
+        resourceIds=[
+            resourceid
+        ]
+    )
+    username = response['resourceIdentifiers'][0]['resourceName']
+    print('config user resourceid: ': + resourceid)
     print('username: ' + username)
+
       
     if serviceId_key in secretList:
         serviceId = secretList[serviceId_key]
@@ -164,6 +177,8 @@ def lambda_handler(event, context):
     millis = int(round(time.time() * 1000))
     timestamp = str(millis)
     
+    userarn = 'arn:aws:iam::' + accountId +':user/' + username
+
     accessToken = getAccessToken(serviceId,timestamp,accessKey,secretKey,url,443)
     print('accessToken is: ' + accessToken)
     iampolicy = getCloudKnoxRemediationPolicy(apiId, accessToken, serviceId, timestamp, url, accountId, userarn, 443)
