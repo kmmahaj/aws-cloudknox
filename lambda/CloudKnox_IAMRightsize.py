@@ -158,7 +158,7 @@ def lambda_handler(event, context):
         ]
     )
     username = response['resourceIdentifiers'][0]['resourceName']
-    print('config user resourceid: ': + resourceid)
+    print('config user resourceid: ' + resourceid)
     print('username: ' + username)
 
       

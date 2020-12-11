@@ -202,5 +202,5 @@ Resources:
           ConcurrentExecutionRatePercentage: 10
           ErrorPercentage: 10
       Automatic: True
-      MaximumAutomaticAttempts: 5
-      RetryAttemptSeconds: 60
+      MaximumAutomaticAttempts: 1
+      RetryAttemptSeconds: 600
