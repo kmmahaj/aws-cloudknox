@@ -198,23 +198,23 @@ def lambda_handler(event, context):
         
         PolicyName = 'CloudKnoxRemediationPolicy-' + username + '-' + str(count)
 
-        response = iamClient.create_policy(
-                            PolicyName=PolicyName,
-                            PolicyDocument=PolicyDocument
+        # attach managed policy to user only if the policy is not already attached.
+        iampolicylist = iamClient.list_policies(
+                            Scope='Local',
+                            OnlyAttached=True,
+                            PolicyUsageFilter='PermissionsPolicy'
         )
         
-        PolicyArn = response['Policy']['Arn']
-
-        response = iamClient.attach_user_policy(
+        if not any(iampolicy['PolicyName'] == PolicyName for iampolicy in iampolicylist['Policies']):
+            response_create = iamClient.create_policy(
+                        PolicyName=PolicyName,
+                        PolicyDocument=PolicyDocument
+            )
+            PolicyArn = response_create['Policy']['Arn']
+            response = iamClient.attach_user_policy(
                             UserName=username,
                             PolicyArn=PolicyArn
-        )
+            )
 
-        #response = iamClient.put_user_policy(
-        #                    PolicyDocument=PolicyDocument,
-        #                    PolicyName=PolicyName,
-        #                   UserName=username,
-        #)
-    
     
     return 
