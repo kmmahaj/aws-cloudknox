@@ -15,50 +15,16 @@ AWSTemplateFormatVersion: "2010-09-09"
 ## This code is made available under the MIT-0 license. See the LICENSE file.
 
 
-Outputs:
-  AutomationAssumeRoleArn:
-    Description: Arn for AutomationAssumeRole
-    Value: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}'
-    Export: # added to export
-      Name: CloudKnox-AutomationAssumeRoleArn
-
 Parameters:
   SourceBucket:
     Description: S3 Bucket that contains the CloudKnox_IAMRightsize Lambda 
     Type: String
-    Default: 's3-cloudknoxiamuserrightsize'
-    MinLength: '1'
-    MaxLength: '255'
-
-  testuserarn:
-    Description: Test user to test the SSM Automation. Will be removed. User directly provided by AWS Config
-    Type: String
-    Default: 'arn:aws:iam::341476298946:user/iamuser2'
+    Default: 's3-cloudknoxiamuserrightsize-<AWS::AccountId>-<AWS::Region>'
     MinLength: '1'
     MaxLength: '255'
 
 
 Resources:
-
-# SSM Automation Role
-  AutomationAssumeRole:
-    Type: 'AWS::IAM::Role'
-    Properties:
-      RoleName: !Sub cloudknox-automationassumerole-${AWS::Region}
-      AssumeRolePolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service:
-                - ssm.amazonaws.com
-                - events.amazonaws.com
-                - ec2.amazonaws.com
-            Action:
-              - 'sts:AssumeRole'
-      Path: /
-      ManagedPolicyArns:
-        - !Sub "arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess"
 
 #CloudKnox IAM Rightsize Lambda
   CloudKnoxIAMUserRightsizeLambda:
@@ -143,13 +109,12 @@ Resources:
     Type: 'AWS::Lambda::Permission'
     DependsOn:
       - CloudKnoxIAMUserRightsizeLambda
-      - AutomationAssumeRole
     Properties:
       FunctionName: !GetAtt 
         - CloudKnoxIAMUserRightsizeLambda
         - Arn
       Action: 'lambda:InvokeFunction'
-      Principal: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
+      Principal: !ImportValue CloudKnox-AutomationAssumeRoleArn
 
 
 # [CloudKnox-IAMUserRightsizing SSM]
@@ -161,13 +126,13 @@ Resources:
       Name: Custom-CloudKnoxIAMUserRightsizing
       Content:
         schemaVersion: '0.3'
-        assumeRole: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
+        assumeRole: !ImportValue CloudKnox-AutomationAssumeRoleArn
         parameters:
-          userarn:
+          userid:
             type: String
           AutomationAssumeRole:
             type: String
-            default: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AutomationAssumeRole}"
+            default: !ImportValue CloudKnox-AutomationAssumeRoleArn
         mainSteps:
           - name: rightsizeiamuser
             action: 'aws:invokeLambdaFunction'
@@ -176,7 +141,7 @@ Resources:
             inputs:
               FunctionName: !GetAtt CloudKnoxIAMUserRightsizeLambda.Arn
               InvocationType: RequestResponse
-              Payload: '{"parameterName":"userarn", "parameterValue":"{{userarn}}"}'
+              Payload: '{"parameterName":"userid", "parameterValue":"{{userid}}"}'
 
 
 # [CloudKnox-AWS Config Remediation for high PCI]
@@ -193,8 +158,8 @@ Resources:
         AutomationAssumeRole:
           StaticValue:
             Values:
-              - !ImportValue AutomationAssumeRoleArn
-        userarn:
+              - !ImportValue CloudKnox-AutomationAssumeRoleArn
+        userid:
           ResourceValue:
             Value: "RESOURCE_ID"
       ExecutionControls:

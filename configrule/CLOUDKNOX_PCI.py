@@ -5,9 +5,10 @@
 # - Implements 'EvaluateCompliance' to return Non Compliant IAM Users (users with High CloudKnox 
 #   'Privilege Creep Index')
 
-
 # @kmmahaj
+#
 # @mneelka - CloudKnox Authenticate and Identity Usage API
+#
 ## License:
 ## This code is made available under the MIT-0 license. See the LICENSE file.
 

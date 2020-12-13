@@ -196,14 +196,25 @@ def lambda_handler(event, context):
         PolicyDocument = json.dumps(iampolicydict)
         print('PolicyDocument: ' + PolicyDocument)
         
-        PolicyName = 'CloudKnoxRemediationPolicy-' + str(count)
-        
-        response = iamClient.put_user_policy(
-                            PolicyDocument=PolicyDocument,
+        PolicyName = 'CloudKnoxRemediationPolicy-' + username + '-' + str(count)
+
+        response = iamClient.create_policy(
                             PolicyName=PolicyName,
-                            UserName=username,
+                            PolicyDocument=PolicyDocument
         )
-    
+        
+        PolicyArn = response['Policy']['Arn']
+
+        response = iamClient.attach_user_policy(
+                            UserName=username,
+                            PolicyArn=PolicyArn
+        )
+
+        #response = iamClient.put_user_policy(
+        #                    PolicyDocument=PolicyDocument,
+        #                    PolicyName=PolicyName,
+        #                   UserName=username,
+        #)
     
     
     return 
