@@ -206,14 +206,17 @@ def lambda_handler(event, context):
                             PolicyUsageFilter='PermissionsPolicy'
         )
 
-        for iampolicy_existing in iampolicylist['Policies']:
-            if not (iampolicy_existing['PolicyName'].startswith( 'CloudKnoxRemediationPolicy-' )):
-                policyArn_existing = iampolicy_existing['Arn']
-                response_existing = iamClient.detach_user_policy(
-                                UserName=username,
-                                PolicyArn=policyArn_existing
-                )
+        response_group = iamClient.list_groups_for_user(
+                        UserName=username
 
+        )
+        
+        for group in response_group['Groups']:
+            groupname = group['GroupName']
+            response = iamClient.remove_user_from_group(
+                        GroupName=groupname,
+                        UserName=username
+            )
         
         if not any(iampolicy['PolicyName'] == PolicyName for iampolicy in iampolicylist['Policies']):
             response_create = iamClient.create_policy(
