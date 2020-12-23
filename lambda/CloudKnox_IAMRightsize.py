@@ -89,6 +89,37 @@ def getCloudKnoxRemediationPolicy(apiId, accessToken, serviceId, timestamp, url,
     data_raw = data.decode()
     print('data_raw: ' + data_raw)
     dataResponse = json.loads(data.decode("utf-8"))
+    default_policy = {
+    'Version': '2012-10-17',
+    'Statement': [{
+        'Sid': 'AllowIAM',
+        'Effect': 'Allow',
+        'Action': ['iam:CreateRole'],
+        'Resource': '*'
+    }]
+    }
+    #defaultpolicyDict = eval(default_policy)
+
+    if (len(dataResponse['data'])==0):
+    #    policyText = '{\n  "Version" : "2008-10-17",\n  "Statement" : [ {\n    "Sid" : "Allow IAM",\n    "Effect" : "Allow",\n "Action" : [ "iam:CreateRole" ],\\n "Resource" : [ "*" ]\n } ]\n}'
+       
+        policyData ={}
+        policyData['policyName'] = "ck_activity_test"
+        policyData['policy'] = default_policy
+        print("inside data length 0")
+        dataList = [{}] * 1
+        dataList[0] = policyData
+        return dataList
+    if dataResponse.get('errorCode'):
+    #    policyText = '{\n  "Version" : "2008-10-17",\n  "Statement" : [ {\n    "Sid" : "Allow IAM",\n    "Effect" : "Allow",\n    "Resource" : "*",\n "Action" : [ "iam:CreateRole" ]\n } ]\n}'
+        policyData ={}
+        policyData['policyName'] = "ck_activity_test"
+        policyData['policy'] = default_policy
+        print("inside error code")
+        dataList = [{}] * 1
+        dataList[0] = policyData
+        return dataList
+        
     print('dataResponse_policy: ' + dataResponse['data'][0]['policyName'])
     return dataResponse['data']
 
@@ -197,28 +228,40 @@ def lambda_handler(event, context):
         print('PolicyDocument: ' + PolicyDocument)
         
         PolicyName = 'CloudKnoxRemediationPolicy-' + username + '-' + str(count)
-
-        # attach managed policy to user only if the policy is not already attached.
-
-        iampolicylist = iamClient.list_policies(
-                            Scope='Local',
-                            OnlyAttached=True,
-                            PolicyUsageFilter='PermissionsPolicy'
-        )
-
+        
+        #retrieve list of groups
         response_group = iamClient.list_groups_for_user(
-                        UserName=username
+                        UserName=username,
 
         )
         
-        for group in response_group['Groups']:
-            groupname = group['GroupName']
-            response = iamClient.remove_user_from_group(
-                        GroupName=groupname,
-                        UserName=username
-            )
+        #detach all groups from user
+        if (len(response_group['Groups']) > 0):
+            for group in response_group['Groups']:
+                groupname = group['GroupName']
+                response = iamClient.remove_user_from_group(
+                            GroupName=groupname,
+                            UserName=username
+                )
         
-        if not any(iampolicy['PolicyName'] == PolicyName for iampolicy in iampolicylist['Policies']):
+        
+        #retrieve list of policies
+        iampolicylist = iamClient.list_attached_user_policies(
+                            UserName=username
+        )
+   
+        
+        #detach all managed policies from user
+        if (len(iampolicylist['AttachedPolicies']) > 0):
+            for iampolicydetach in iampolicylist['AttachedPolicies']:
+                policyarn = iampolicydetach['PolicyArn']
+                response_detach = iamClient.detach_user_policy(
+                            UserName=username,
+                            PolicyArn=policyarn
+                )
+        
+        #attach cloudknox managed policy
+        if not any(iampolicy['PolicyName'] == PolicyName for iampolicy in iampolicylist['PolicyArn']):
             response_create = iamClient.create_policy(
                         PolicyName=PolicyName,
                         PolicyDocument=PolicyDocument
@@ -228,7 +271,6 @@ def lambda_handler(event, context):
                             UserName=username,
                             PolicyArn=PolicyArn
             )
-
 
     
     return 

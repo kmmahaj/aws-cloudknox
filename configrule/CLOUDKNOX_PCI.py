@@ -1,18 +1,12 @@
 
-# Provisions Custom Config Rule for CloudKnox PCI 
-# - Invokes CloudKnox REST APIs for authenticate and Identity Usage
-# - Retrieves CloudKnox Credentials from Secrets Manager
-# - Implements 'EvaluateCompliance' to return Non Compliant IAM Users (users with High CloudKnox 
-#   'Privilege Creep Index')
+#  Lambda for IAM Rightsizing with CloudKnox and AWS Config
+#  - IAM Rightsizing Lambda that uses CloudKnox Policy API
 
 # @kmmahaj
 #
-# @mneelka - CloudKnox Authenticate and Identity Usage API
-#
+# @mneelka - CloudKnox Policy API
 ## License:
 ## This code is made available under the MIT-0 license. See the LICENSE file.
-
-
 
 import json
 import sys
@@ -90,25 +84,32 @@ def retrievePCI(apiId, accessToken, serviceId, timestamp, url, accountId, port):
       'X-CloudKnox-Timestamp-Millis': timestamp,
       'Content-Type': content_type
     }
+    
     cloudknoxDict = {}
-    cloudknoxDict['authSystemInfo'] = {'id': accountId,
-                                        'type': 'AWS'}
-    cloudknoxDict['identityType'] = 'USER'
-    cloudknoxDict['aggregation'] = {'type': 'SUMMARY'}
-    cloudknoxDict['pageInfo'] = {'pageId': 0,
-                                  'pageSize': 50}
-
+    cloudknoxDict['authSystems'] = [{'id': accountId,
+                                        'type': 'AWS'}]
+    cloudknoxDict['category'] = 'IDENTITIES_ACTIVE_OVER_PROVISIONED'
+    cloudknoxDict['tableDataRequest'] = {
+        "tableId": "USERS",
+        "pageInfo": {
+            "pageSize": 50,
+            "pageNumber": 1
+        },
+        "sort": {
+            "ascending": False,
+            "fieldName": "riskScore"
+        }
+    }
     payload = json.dumps(cloudknoxDict)
     print('payload: ' + payload)
-    
-    conn.request("POST", "/api/v2/identity/usage", payload, headers)
+    conn.request("POST", "/api/v2/query/risk-assessment/category", payload, headers)
     res = conn.getresponse()
     data = res.read()
     data_raw = data.decode()
-    print('data_raw: ' + data_raw)
+    print('data_raw>>>>: ' + data_raw)
     dataResponse = json.loads(data.decode("utf-8"))
-    print('dataResponse_name: ' + dataResponse['data'][1]['name'])
-    return dataResponse['data']
+    print(dataResponse)
+    return dataResponse
 
 ## Authenticate CloudKnox API - Retrive accessToken:
 def getAccessToken(serviceId,timestamp,accessKey,secretKey,url,port):
@@ -251,23 +252,24 @@ def evaluate_compliance(event, configuration_item, valid_rule_parameters):
         username = user['name']
         if (username in userList_Name):
             resourceindex = userList_Name.index(username)
-            if user['pciScore']['category'] == 'HIGH':
-                  ## Report Non Compliance
-                    annotation_str = complianceString + str(user['pciScore']['privilegeCreepIndex'])
-                    annotation = build_annotation(annotation_str)
-                    evaluations.append(build_evaluation(userList_ID[resourceindex],
-                                                        'NON_COMPLIANT',
-                                                        event,
-                                                        annotation=annotation))
-    
+            score = user['riskScore']
+            if score >= 70:
+                 ## Report Non Compliance
+                annotation_str = complianceString + str(score)
+                annotation = build_annotation(annotation_str)
+                evaluations.append(build_evaluation(userList_ID[resourceindex],
+                                                    'NON_COMPLIANT',
+                                                    event,
+                                                    annotation=annotation))
+
             else:
-                    ## Report Compliance
-                    annotation_str = complianceString + str(user['pciScore']['privilegeCreepIndex'])
-                    annotation = build_annotation(annotation_str)
-                    evaluations.append(build_evaluation(userList_ID[resourceindex],
-                                                        'COMPLIANT',
-                                                        event,
-                                                        annotation=annotation))
+                ## Report Compliance
+                annotation_str = complianceString + str(score)
+                annotation = build_annotation(annotation_str)
+                evaluations.append(build_evaluation(userList_ID[resourceindex],
+                                                    'COMPLIANT',
+                                                    event,
+                                                    annotation=annotation))
 
             
     if evaluations:
